@@ -133,8 +133,9 @@ def query_node(node, http, url, on_query_error=None):
 
 def usage_example():
     query = QueryNode('query')
-    person = query.add_child_node(QueryNode('user')).\
-        add_arg('login', 'eliben')
-    person.add_child_node(QueryNode('id'))
-    person.add_child_node(QueryNode('email'))
-    person.add_child_node(QueryNode('avatar')).add_arg('size', 20)
+    linus = query.add_child_node(QueryNode('user')).\
+        add_arg('login', 'torvalds')
+    linus.add_child_node(QueryNode('id'))
+    linus.add_child_node(QueryNode('email'))
+    linus.add_child_node(QueryNode('avatar')).add_arg('size', 20)
+    query_node(query, requests.Session(), 'https://api.github.com/graphql')
