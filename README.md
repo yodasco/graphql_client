@@ -20,7 +20,7 @@ query_node(query, session, 'https://api.github.com/graphql')
 ```
 
 ## Installation
-pip install graphql_client
+`pip install graphql_client`
 
 ## Licence
 TBD
