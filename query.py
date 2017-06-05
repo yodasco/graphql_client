@@ -1,4 +1,5 @@
 import requests
+import functools
 
 
 class QueryNode:
@@ -46,6 +47,32 @@ class QueryNode:
         self.args[argname] = arg_value
         return self
 
+    def _list_query(self, list_name):
+        '''
+        Queries for the next bulk of the list with the given name.
+        Other then that, the state stays the same.
+        '''
+        # Prune all child nodes, but followers (reduce traffic).
+        restore = self.prune_childes(retain={list_name})
+        self.query_call()
+        # Finally, restore other state elements.
+        restore()
+
+    def _list_gen(self, list_name, key):
+        '''
+        Returns a generator for the list with the given name.
+        list_name: Name of the list to be iterated.
+        key: Name of the key in each item.
+        '''
+        list_node = self._get_child(list_name)
+        while list_node.has_current():
+            cur = list_node.current()
+            # Yield current item.
+            yield cur[key]
+            # Iteration advance.
+            list_query = functools.partial(self._list_query, list_name)
+            list_node.next(list_query)
+
     def add_child_node(self, child):
         '''
         DOM-API.
@@ -54,7 +81,7 @@ class QueryNode:
         self.childes.append(child)
         return child
 
-    def prune_childes(self, freez_set, deep=False):
+    def prune_childes(self, retain, deep=False):
         '''
         Prunes all the child node for the given node; but leave the child nodes
         that their names are in 'freez_set' += remove += removednode: node to
@@ -64,12 +91,18 @@ class QueryNode:
                   shallow state copying.
             Return: a callable to restore the previous state.
             '''
-        removed = filter(lambda n: n.name not in freez_set, self.childes)
-        self.childes = filter(lambda n: n.name in freez_set, self.childes)
+        removed = filter(lambda n: n.name not in retain, self.childes)
+        self.childes = filter(lambda n: n.name in retain, self.childes)
 
         def _restore():
             self.childes += removed
         return _restore
+
+    def set_query_call(self, query_call):
+        '''
+        Sets the query callable to be used by the node if needed.
+        '''
+        self.query_call = query_call
 
     def __str__(self):
         '''
@@ -131,6 +164,30 @@ def query_node(node, http, url, on_query_error=None):
     return node.bind(dres)
 
 
+class GraphqlQuery(QueryNode):
+    def __init__(self):
+        QueryNode.__init__(self, 'query')
+        self.bind_name = 'data'
+
+
+def create_query(auth, qnode, url, on_error=None):
+    '''
+    Creates a callable object that queries that binds the given 'qnode'
+    with data returned from the graphql query.
+    '''
+    http = requests.Session()
+    http.headers['Authorization'] = 'Bearer {}'.format(auth)
+    root_node = GraphqlQuery()
+    root_node.add_child_node(qnode)
+    query_invcation = functools.partial(query_node,
+                                        root_node,
+                                        http,
+                                        url,
+                                        on_error)
+    qnode.set_query_call(query_invcation)
+    return query_invcation
+
+
 def usage_example():
     query = QueryNode('query')
     linus = query.add_child_node(QueryNode('user')).\
@@ -138,4 +195,12 @@ def usage_example():
     linus.add_child_node(QueryNode('id'))
     linus.add_child_node(QueryNode('email'))
     linus.add_child_node(QueryNode('avatar')).add_arg('size', 20)
-    query_node(query, requests.Session(), 'https://api.github.com/graphql')
+    pwd = open('pwd.txt', 'r')
+    query = create_query(pwd.readline().strip(), linus,
+                         'https://api.github.com/graphql')
+    query()
+    pwd.close()
+
+
+if __name__ == '__main__':
+    usage_example()
