@@ -154,7 +154,10 @@ def query_node(node, http, url, on_query_error=None):
     res = http.post(url, json=in_query)
     if res.status_code != requests.codes.ok:
         # TODO: log this.
-        print 'Error: {}'.format(res['errors'])
+        if 'errors' in res:
+            print 'Error: {}'.format(res['errors'])
+        else:
+            print 'Error, code {}'.format(res.status_code)
         return None
     dres = res.json()
     if 'errors' in dres:
