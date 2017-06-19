@@ -1,5 +1,12 @@
 import requests
 import functools
+from requests import exceptions
+
+
+class GhGraphQLError(Exception):
+    def __init__(self, http_res):
+        err_msg = http_res['errors']
+        Exception.__init__(self, err_msg)
 
 
 class QueryNode:
@@ -22,6 +29,20 @@ class QueryNode:
         Returns a graphql string query for the given argument name and value.
         '''
         return '{}:{}'.format(arg_name, arg_val)
+
+    def _query(self, http, url):
+        root = GraphqlQuery()
+        root.add_child_node(self)
+        in_query = {'query': str(root)}
+        res = http.post(url, json=in_query)
+        if res.status_code != requests.codes.ok:
+            raise exceptions.RequestException(
+                {'response': res, 'request': in_query})
+        json = res.json()
+        if 'errors' in json:
+            return res
+        root.bind(json)
+        return res
 
     def _get_child(self, name):
         '''
@@ -47,30 +68,35 @@ class QueryNode:
         self.args[argname] = arg_value
         return self
 
-    def _list_query(self, list_name):
+    def _list_query(self, list_name, http, url):
         '''
         Queries for the next bulk of the list with the given name.
         Other then that, the state stays the same.
         '''
+        list_child = self._get_child(list_name)
+        if list_child.is_binded:
+            return
         # Prune all child nodes, but followers (reduce traffic).
         restore = self.prune_childes(retain={list_name})
-        self.query_call()
+        self._query(http, url)
         # Finally, restore other state elements.
         restore()
 
-    def _list_gen(self, list_name, key):
+    def _list_gen(self, list_name, key, http, url):
         '''
         Returns a generator for the list with the given name.
         list_name: Name of the list to be iterated.
         key: Name of the key in each item.
         '''
         list_node = self._get_child(list_name)
+        list_node.reset()
         while list_node.has_current():
             cur = list_node.current()
             # Yield current item.
-            yield cur[key]
+            yield None if cur is None else cur[key]
             # Iteration advance.
-            list_query = functools.partial(self._list_query, list_name)
+            list_query = functools.partial(self._list_query, list_name, http,
+                                           url)
             list_node.next(list_query)
 
     def add_child_node(self, child):
@@ -84,9 +110,9 @@ class QueryNode:
     def prune_childes(self, retain, deep=False):
         '''
         Prunes all the child node for the given node; but leave the child nodes
-        that their names are in 'freez_set' += remove += removednode: node to
+        that their names are in 'retain' += remove += removednode: node to
         be pruned.
-            freez_set: names of the nodes to be left in the DOM.
+            retain: names of the nodes to be left in the DOM.
             deep: True if state copying should be down deep, False indicates
                   shallow state copying.
             Return: a callable to restore the previous state.
@@ -97,12 +123,6 @@ class QueryNode:
         def _restore():
             self.childes += removed
         return _restore
-
-    def set_query_call(self, query_call):
-        '''
-        Sets the query callable to be used by the node if needed.
-        '''
-        self.query_call = query_call
 
     def __str__(self):
         '''
@@ -144,27 +164,11 @@ class QueryNode:
                   "Bind error: field '{}' could not be found in {}".
                   format(bind_name, res)))
         for child_node in self.childes:
+            if bind_name not in res:
+                raise Exception('Internal error, {} not found in {}'.
+                                format(bind_name, res))
             child_node.bind(res[bind_name])
         return self
-
-
-def query_node(node, http, url, on_query_error=None):
-    # TODO: Remove.
-    in_query = {'query': str(node)}
-    res = http.post(url, json=in_query)
-    if res.status_code != requests.codes.ok:
-        # TODO: log this.
-        if 'errors' in res:
-            print 'Error: {}'.format(res['errors'])
-        else:
-            print 'Error, code {}'.format(res.status_code)
-        return None
-    dres = res.json()
-    if 'errors' in dres:
-        if on_query_error:
-            on_query_error(dres['errors'], node)
-        return None
-    return node.bind(dres)
 
 
 class GraphqlQuery(QueryNode):
@@ -173,35 +177,19 @@ class GraphqlQuery(QueryNode):
         self.bind_name = 'data'
 
 
-def create_query(auth, qnode, url, on_error=None):
-    '''
-    Creates a callable object that queries that binds the given 'qnode'
-    with data returned from the graphql query.
-    '''
-    http = requests.Session()
-    http.headers['Authorization'] = 'Bearer {}'.format(auth)
-    root_node = GraphqlQuery()
-    root_node.add_child_node(qnode)
-    query_invcation = functools.partial(query_node,
-                                        root_node,
-                                        http,
-                                        url,
-                                        on_error)
-    qnode.set_query_call(query_invcation)
-    return query_invcation
-
-
 def usage_example():
     query = QueryNode('query')
     linus = query.add_child_node(QueryNode('user')).\
         add_arg('login', 'torvalds')
     linus.add_child_node(QueryNode('id'))
     linus.add_child_node(QueryNode('email'))
-    linus.add_child_node(QueryNode('avatar')).add_arg('size', 20)
+    linus.add_child_node(QueryNode('avatarUrl')).add_arg('size', 20)
     pwd = open('pwd.txt', 'r')
-    query = create_query(pwd.readline().strip(), linus,
-                         'https://api.github.com/graphql')
-    query()
+    http = requests.Session()
+    http.headers['Authorization'] = \
+        'Bearer 7556acd462db83839be375fa29717ba597c56fc0'
+    linus._query(http, 'https://api.github.com/graphql')
+    print 'Linuse\'s Avatar is: {}'.format(linus._get_child('avatarUrl').val)
     pwd.close()
 
 
