@@ -8,22 +8,30 @@ Easy to use, strongly-typed clinet API for GraphQL.
 
 ## Code Example
 ```python
-query = QueryNode('query')
-    linus = query.add_child_node(QueryNode('user')).\
-        add_arg('login', 'torvalds')
-    linus.add_child_node(QueryNode('id'))
-    linus.add_child_node(QueryNode('email'))
-    linus.add_child_node(QueryNode('avatar')).add_arg('size', 20)
-    pwd = open('pwd.txt', 'r')
-    query = create_query(pwd.readline().strip(), linus,
-                         'https://api.github.com/graphql')
-    query()
-    # 'linus' is now binded.
-    pwd.close()
-```
+from query import QueryNode
+from query_binder import bind
 
-## Installation
-`pip install graphql_client`
+def get_http():
+    session = requests.Session()
+    session.headers['Authorization'] = 'Bearer {}'.\
+        format('<gh token>')
+    return session
 
-## Licence
-TBD
+
+class GHUser(QueryNode):
+    '''
+    Usage example class for GH user.
+    '''
+    def __init__(self, un):
+        QueryNode.__init__(self, 'user')
+        self.qroot = self.add_child_node(QueryNode('user')).\
+            add_arg('login', un)
+        self.values = dict()
+
+    @bind(field='name', url='https://api.github.com/graphql', http=get_http())
+    def get_name(self):
+        return self.values['name']
+
+
+user = GHUser('linus')
+print user.get_name()

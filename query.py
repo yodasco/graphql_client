@@ -184,10 +184,10 @@ def usage_example():
     linus.add_child_node(QueryNode('id'))
     linus.add_child_node(QueryNode('email'))
     linus.add_child_node(QueryNode('avatarUrl')).add_arg('size', 20)
-    pwd = open('pwd.txt', 'r')
+    with open('pwd.txt', 'r') as f:
+        pwd = f.readline().strip()
     http = requests.Session()
-    http.headers['Authorization'] = \
-        'Bearer 7556acd462db83839be375fa29717ba597c56fc0'
+    http.headers['Authorization'] = 'Bearer {}'.format(pwd)
     linus._query(http, 'https://api.github.com/graphql')
     print 'Linuse\'s Avatar is: {}'.format(linus._get_child('avatarUrl').val)
     pwd.close()
