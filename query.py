@@ -1,5 +1,12 @@
 import requests
 import functools
+from requests import exceptions
+
+
+class GhGraphQLError(Exception):
+    def __init__(self, http_res):
+        err_msg = http_res['errors']
+        Exception.__init__(self, err_msg)
 
 
 class QueryNode:
@@ -29,7 +36,8 @@ class QueryNode:
         in_query = {'query': str(root)}
         res = http.post(url, json=in_query)
         if res.status_code != requests.codes.ok:
-            return res
+            raise exceptions.RequestException(
+                {'response': res, 'request': in_query})
         json = res.json()
         if 'errors' in json:
             return res
@@ -163,28 +171,6 @@ class QueryNode:
         return self
 
 
-<<<<<<< Updated upstream
-def query_node(node, http, url, on_query_error=None):
-    # TODO: Remove.
-    in_query = {'query': str(node)}
-    res = http.post(url, json=in_query)
-    if res.status_code != requests.codes.ok:
-        # TODO: log this.
-        if 'errors' in res:
-            print 'Error: {}'.format(res['errors'])
-        else:
-            print 'Error, code {}'.format(res.status_code)
-        return None
-    dres = res.json()
-    if 'errors' in dres:
-        if on_query_error:
-            on_query_error(dres['errors'], node)
-        return None
-    return node.bind(dres)
-
-
-=======
->>>>>>> Stashed changes
 class GraphqlQuery(QueryNode):
     def __init__(self):
         QueryNode.__init__(self, 'query')
