@@ -36,11 +36,12 @@ class QueryNode:
         in_query = {'query': str(root)}
         res = http.post(url, json=in_query)
         if res.status_code != requests.codes.ok:
+            print res.json()
             raise exceptions.RequestException(
                 {'response': res, 'request': in_query})
         json = res.json()
         if 'errors' in json:
-            return res
+            raise GhGraphQLError(json)
         root.bind(json)
         return res
 
@@ -54,7 +55,20 @@ class QueryNode:
                 return child_node
         return None
 
-    # DOM API.
+    def _list_query(self, list_name, http, url):
+        '''
+        Queries for the next bulk of the list with the given name.
+        Other then that, the state stays the same.
+        '''
+        list_child = self._get_child(list_name)
+        if list_child.is_bound:
+            return
+        # Prune all child nodes, but followers (reduce traffic).
+        restore = self.prune_childes(retain={list_name})
+        self._query(http, url)
+        # Finally, restore other state elements.
+        restore()
+
     def add_arg(self, argname, arg_value):
         '''
         DOM-API.
@@ -68,21 +82,7 @@ class QueryNode:
         self.args[argname] = arg_value
         return self
 
-    def _list_query(self, list_name, http, url):
-        '''
-        Queries for the next bulk of the list with the given name.
-        Other then that, the state stays the same.
-        '''
-        list_child = self._get_child(list_name)
-        if list_child.is_binded:
-            return
-        # Prune all child nodes, but followers (reduce traffic).
-        restore = self.prune_childes(retain={list_name})
-        self._query(http, url)
-        # Finally, restore other state elements.
-        restore()
-
-    def _list_gen(self, list_name, key, http, url):
+    def _list_gen(self, list_name, key, http, url, *node_attributes):
         '''
         Returns a generator for the list with the given name.
         list_name: Name of the list to be iterated.
@@ -93,12 +93,19 @@ class QueryNode:
         while list_node.has_current():
             cur = list_node.current()
             # Yield current item.
-            yield None if cur is None else cur[key]
+            if cur is None:
+                yield None
+            elif not node_attributes:
+                yield cur[key]
+            else:
+                yield (cur[key],) + \
+                      tuple(cur[attr] for attr in node_attributes)
             # Iteration advance.
             list_query = functools.partial(self._list_query, list_name, http,
                                            url)
             list_node.next(list_query)
 
+    # DOM API.
     def add_child_node(self, child):
         '''
         DOM-API.
