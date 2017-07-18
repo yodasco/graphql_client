@@ -36,7 +36,6 @@ class QueryNode:
         in_query = {'query': str(root)}
         res = http.post(url, json=in_query)
         if res.status_code != requests.codes.ok:
-            print res.json()
             raise exceptions.RequestException(
                 {'response': res, 'request': in_query})
         json = res.json()
