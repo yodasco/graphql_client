@@ -88,6 +88,8 @@ class QueryNode:
         key: Name of the key in each item.
         '''
         list_node = self._get_child(list_name)
+        msg = 'No list named {} in QOM'.format(list_name)
+        assert list_name, msg
         list_node.reset()
         while list_node.has_current():
             cur = list_node.current()
@@ -116,9 +118,8 @@ class QueryNode:
     def prune_childes(self, retain, deep=False):
         '''
         Prunes all the child node for the given node; but leave the child nodes
-        that their names are in 'retain' += remove += removednode: node to
-        be pruned.
-            retain: names of the nodes to be left in the DOM.
+        that their names are in 'retain'.
+            retain: names of the nodes to be left in the QOM.
             deep: True if state copying should be down deep, False indicates
                   shallow state copying.
             Return: a callable to restore the previous state.
