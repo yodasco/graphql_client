@@ -13,7 +13,7 @@ class QueryNode:
     '''
     Represents a GraphQL Query node.
     '''
-    def __init__(self, name):
+    def __init__(self, name, logger=None):
         # Node name.
         self.name = name
         self.bind_name = name
@@ -21,6 +21,7 @@ class QueryNode:
         self.args = dict()
         # Node childes.
         self.childes = list()
+        self.logger = logger
 
     # Protected util.
     def _format_arg(self, arg_name, arg_val):
@@ -59,9 +60,6 @@ class QueryNode:
         Queries for the next bulk of the list with the given name.
         Other then that, the state stays the same.
         '''
-        list_child = self._get_child(list_name)
-        if list_child.is_bound:
-            return
         # Prune all child nodes, but followers (reduce traffic).
         restore = self.prune_childes(retain={list_name})
         self._query(http, url)
