@@ -13,7 +13,7 @@ class QueryNode:
     '''
     Represents a GraphQL Query node.
     '''
-    def __init__(self, name):
+    def __init__(self, name, logger=None):
         # Node name.
         self.name = name
         self.bind_name = name
@@ -21,6 +21,7 @@ class QueryNode:
         self.args = dict()
         # Node childes.
         self.childes = list()
+        self.logger = logger
 
     # Protected util.
     def _format_arg(self, arg_name, arg_val):
@@ -59,9 +60,6 @@ class QueryNode:
         Queries for the next bulk of the list with the given name.
         Other then that, the state stays the same.
         '''
-        list_child = self._get_child(list_name)
-        if list_child.is_bound:
-            return
         # Prune all child nodes, but followers (reduce traffic).
         restore = self.prune_childes(retain={list_name})
         self._query(http, url)
@@ -88,6 +86,10 @@ class QueryNode:
         key: Name of the key in each item.
         '''
         list_node = self._get_child(list_name)
+        assert list_name, 'NULL list name received'
+        msg = 'No list named {} in child list \'{}\'' \
+              .format(list_name, map(lambda cn: cn.name, self.childes))
+        assert list_node is not None, msg
         list_node.reset()
         while list_node.has_current():
             cur = list_node.current()
@@ -102,7 +104,11 @@ class QueryNode:
             # Iteration advance.
             list_query = functools.partial(self._list_query, list_name, http,
                                            url)
-            list_node.next(list_query)
+            try:
+                list_node.next(list_query)
+            except GhGraphQLError as e:
+                self.logger.error('Query Error: {}'.format(str(e)))
+
 
     # DOM API.
     def add_child_node(self, child):
@@ -110,15 +116,17 @@ class QueryNode:
         DOM-API.
         Adds the given child node to the child collection of this node.
         '''
+        if not isinstance(child, QueryNode):
+            raise Exception('You have the wrong type bud, {} is not a query '
+                            'node'.format(type(child)))
         self.childes.append(child)
         return child
 
     def prune_childes(self, retain, deep=False):
         '''
         Prunes all the child node for the given node; but leave the child nodes
-        that their names are in 'retain' += remove += removednode: node to
-        be pruned.
-            retain: names of the nodes to be left in the DOM.
+        that their names are in 'retain'.
+            retain: names of the nodes to be left in the QOM.
             deep: True if state copying should be down deep, False indicates
                   shallow state copying.
             Return: a callable to restore the previous state.
