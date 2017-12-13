@@ -86,8 +86,10 @@ class QueryNode:
         key: Name of the key in each item.
         '''
         list_node = self._get_child(list_name)
-        msg = 'No list named {} in QOM'.format(list_name)
-        assert list_name, msg
+        assert list_name, 'NULL list name received'
+        msg = 'No list named {} in child list \'{}\'' \
+              .format(list_name, map(lambda cn: cn.name, self.childes))
+        assert list_node is not None, msg
         list_node.reset()
         while list_node.has_current():
             cur = list_node.current()
@@ -102,7 +104,11 @@ class QueryNode:
             # Iteration advance.
             list_query = functools.partial(self._list_query, list_name, http,
                                            url)
-            list_node.next(list_query)
+            try:
+                list_node.next(list_query)
+            except GhGraphQLError as e:
+                self.logger.error('Query Error: {}'.format(str(e)))
+
 
     # DOM API.
     def add_child_node(self, child):
@@ -110,6 +116,9 @@ class QueryNode:
         DOM-API.
         Adds the given child node to the child collection of this node.
         '''
+        if not isinstance(child, QueryNode):
+            raise Exception('You have the wrong type bud, {} is not a query '
+                            'node'.format(type(child)))
         self.childes.append(child)
         return child
 
